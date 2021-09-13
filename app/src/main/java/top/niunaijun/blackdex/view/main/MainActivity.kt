@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.inputmethod.InputMethodManager
@@ -12,7 +13,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.afollestad.materialdialogs.MaterialDialog
 import com.afollestad.materialdialogs.files.fileChooser
 import com.ferfalk.simplesearchview.SimpleSearchView
-import com.roger.catloadinglibrary.CatLoadingView
 import com.umeng.analytics.MobclickAgent
 import top.niunaijun.blackbox.BlackDexCore
 import top.niunaijun.blackbox.core.system.dump.IBDumpMonitor
@@ -23,10 +23,11 @@ import top.niunaijun.blackdex.data.entity.DumpInfo
 import top.niunaijun.blackdex.databinding.ActivityMainBinding
 import top.niunaijun.blackdex.util.FileUtil
 import top.niunaijun.blackdex.util.InjectionUtil
-import top.niunaijun.blackdex.util.LoadingUtil
 import top.niunaijun.blackdex.util.inflate
 import top.niunaijun.blackdex.view.base.PermissionActivity
 import top.niunaijun.blackdex.view.setting.SettingActivity
+import top.niunaijun.blackdex.view.widget.ProgressDialog
+import java.io.File
 
 
 class MainActivity : PermissionActivity() {
@@ -37,7 +38,9 @@ class MainActivity : PermissionActivity() {
 
     private lateinit var mAdapter: MainAdapter
 
-    private lateinit var loadingView: CatLoadingView
+    private var loadingView: ProgressDialog? = null
+
+    private var initialDir: File? = null
 
     private var appList: List<AppInfo> = ArrayList()
 
@@ -72,7 +75,9 @@ class MainActivity : PermissionActivity() {
             this.requestPermissionCallback = {
                 if (it) {
                     this.requestPermissionCallback = null
-                    val initialDir = Environment.getExternalStorageDirectory()
+                    if (initialDir == null) {
+                        initialDir = Environment.getExternalStorageDirectory()
+                    }
                     MaterialDialog(this).show {
                         fileChooser(
                             this@MainActivity,
@@ -80,9 +85,10 @@ class MainActivity : PermissionActivity() {
                             filter = FileUtil::filterApk,
                         ) { _, file ->
                             viewModel.startDexDump(file.absolutePath)
+                            this@MainActivity.initialDir = file.parentFile
                         }
 
-                        negativeButton(res = R.string.cancel)
+                        negativeButton(R.string.cancel)
                     }
 
                 }
@@ -117,35 +123,32 @@ class MainActivity : PermissionActivity() {
                         showLoading()
                     }
                     DumpInfo.TIMEOUT -> {
-                        loadingView.dismiss()
+                        hideLoading()
                         MaterialDialog(this).show {
-                            title(res = R.string.unpack_fail)
-                            message(res = R.string.jump_issue)
-                            negativeButton(res = R.string.github) {
-                                negativeButton(text = "Github") {
-                                    val intent = Intent(
-                                        Intent.ACTION_VIEW,
-                                        Uri.parse("https://github.com/CodingGay/BlackDex/issues")
-                                    )
-                                    startActivity(intent)
-                                }
-                                positiveButton(res = R.string.confirm)
-
+                            title(R.string.unpack_fail)
+                            message(R.string.jump_issue)
+                            negativeButton(R.string.github) {
+                                val intent = Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://github.com/CodingGay/BlackDex/issues")
+                                )
+                                startActivity(intent)
                             }
+                            positiveButton(res = R.string.confirm)
                         }
                     }
                     else -> {
                         viewModel.dexDumpSuccess()
+                        hideLoading()
                         val title = if (it.state == DumpInfo.SUCCESS) {
-                            getString(R.string.unpack_success)
+                            R.string.unpack_success
                         } else {
-                            getString(R.string.unpack_fail)
+                            R.string.unpack_fail
                         }
-                        loadingView.dismiss()
                         MaterialDialog(this).show {
-                            title(text = title)
+                            title(title)
                             message(text = it.msg)
-                            positiveButton(res = R.string.confirm)
+                            positiveButton(R.string.confirm)
                         }
                     }
                 }
@@ -157,7 +160,13 @@ class MainActivity : PermissionActivity() {
     private val mMonitor = object : IBDumpMonitor.Stub() {
         override fun onDump(result: DumpResult?) {
             result?.let {
-                if (result.success) {
+                // 此处做进度条
+                if (result.isRunning) {
+                    loadingView?.setProgress(result.currProcess, result.totalProcess)
+                    return
+                }
+
+                if (result.isSuccess) {
                     viewModel.mDexDumpLiveData.postValue(
                         DumpInfo(
                             DumpInfo.SUCCESS,
@@ -205,11 +214,15 @@ class MainActivity : PermissionActivity() {
     }
 
     private fun showLoading() {
-        if (!this::loadingView.isInitialized) {
-            loadingView = CatLoadingView()
+        if (this.loadingView == null) {
+            loadingView = ProgressDialog()
         }
+        loadingView?.show(supportFragmentManager, "")
+    }
 
-        LoadingUtil.showLoading(loadingView, supportFragmentManager)
+    private fun hideLoading() {
+        loadingView?.dismiss()
+        loadingView = null
     }
 
     private fun hideKeyboard() {

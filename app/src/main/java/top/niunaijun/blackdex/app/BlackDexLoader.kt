@@ -21,6 +21,10 @@ class BlackDexLoader {
 
     private var mSaveEnable by AppSharedPreferenceDelegate(App.getContext(), true)
 
+    private var mFixCodeItem by AppSharedPreferenceDelegate(App.getContext(),false)
+
+    private var mHookDump by AppSharedPreferenceDelegate(App.getContext(),true)
+
     private var mDir = if (mSaveEnable) {
         getDexDumpDir(App.getContext())
     } else {
@@ -39,6 +43,14 @@ class BlackDexLoader {
 
             override fun getDexDumpDir(): String {
                 return mDir
+            }
+
+            override fun isFixCodeItem(): Boolean {
+                return mFixCodeItem
+            }
+
+            override fun isEnableHookDump(): Boolean {
+                return mHookDump
             }
         })
     }
@@ -61,6 +73,23 @@ class BlackDexLoader {
 
     fun setSavePath(path: String) {
         this.mSavePath = path
+    }
+
+    fun setFixCodeItem(enable:Boolean){
+        this.mFixCodeItem = enable
+    }
+
+    fun isFixCodeItem():Boolean{
+        return this.mFixCodeItem
+    }
+
+    fun setHookDump(enable: Boolean){
+        this.mHookDump = enable
+    }
+
+    fun isHookDump(): Boolean {
+
+        return this.mHookDump
     }
 
 
